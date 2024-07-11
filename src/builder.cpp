@@ -62,11 +62,3 @@ public:
     }
 };
 
-int main() {
-    DesktopComputerBuilder desktopBuilder;
-    ComputerAssembler assembler;
-    auto computer = assembler.assembleComputer(desktopBuilder);
-    computer.print();
-    return 0;
-}
-
