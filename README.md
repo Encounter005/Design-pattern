@@ -1,1 +1,1 @@
-# Design-pattern
+a learning journey of "Design pattern"
