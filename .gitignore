@@ -1,0 +1,6 @@
+.cache/clangd/index
+out/Debug
+src/CMakeLists.txt
+compile_commands.json
+CMakeLists.txt
+main.cpp
