@@ -3,6 +3,8 @@
 #include <string>
 #include <memory>
 
+namespace builder {
+
 // Product
 class Computer {
 public:
@@ -65,9 +67,11 @@ public:
     }
 };
 
-void test_func() {
+inline void test_func() {
     DesktopComputerBuilder builder;
     ComputerAssembler assembler;
     auto computer = assembler.assembleComputer( builder );
     computer->print();
 }
+
+}; // namespace builder

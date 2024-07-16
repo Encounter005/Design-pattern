@@ -2,12 +2,12 @@
 #include <memory>
 #include <iostream>
 
-
+namespace factory {
 // Abstract product
 class Shape {
 public:
-    Shape() = default;
-    virtual ~Shape() = default;
+    Shape()             = default;
+    virtual ~Shape()    = default;
     virtual void draw() = 0;
 };
 // Concrete Product
@@ -30,7 +30,7 @@ public:
 class ShapeFactory {
 public:
     virtual std::shared_ptr<Shape> createShape() = 0;
-    virtual ~ShapeFactory() = default;
+    virtual ~ShapeFactory()                      = default;
 };
 
 class CircleFactory : public ShapeFactory {
@@ -47,12 +47,14 @@ public:
     }
 };
 
-void test_func() {
-    std::unique_ptr<CircleFactory> circleFactory = std::make_unique<CircleFactory>();
-    std::unique_ptr<SquareFactory> squareFactory = std::make_unique<SquareFactory>();
+inline void test_func() {
+    std::unique_ptr<CircleFactory> circleFactory =
+        std::make_unique<CircleFactory>();
+    std::unique_ptr<SquareFactory> squareFactory =
+        std::make_unique<SquareFactory>();
     auto circle = circleFactory->createShape();
     auto square = squareFactory->createShape();
     circle->draw();
     square->draw();
 }
-
+}; // namespace factory
