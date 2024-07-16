@@ -4,6 +4,7 @@
 #include <atomic>
 #include <memory>
 #include <condition_variable>
+
 template <typename T> class ThreadSafeQue {
 private:
     struct node {
@@ -16,13 +17,13 @@ private:
     std::mutex tail_mutex;
     node *tail;
     std::condition_variable data_cond;
-
-    std::atomic<bool> _bstop;
+    std::atomic<bool> bstop{ false };
 
     node *get_tail() {
-        std::lock_guard<std::mutex> tail_lock( tail_mutex );
+        std::lock_guard<std::mutex> lock( tail_mutex );
         return tail;
     }
+
     std::unique_ptr<node> pop_head() {
         std::unique_ptr<node> old_head = std::move( head );
         head                           = std::move( old_head->next );
@@ -30,103 +31,97 @@ private:
     }
 
     std::unique_lock<std::mutex> wait_for_data() {
-        std::unique_lock<std::mutex> head_lock( head_mutex );
-        data_cond.wait( head_lock, [&] {
-            return ( _bstop.load() == true ) || ( head.get() != get_tail() );
-        } );
-        return std::move( head_lock );
+        std::unique_lock<std::mutex> lock( head_mutex );
+        data_cond.wait(
+            lock, [this] { return bstop.load() || head.get() != get_tail(); } );
+        return std::move( lock );
     }
 
-    std::unique_ptr<node> wait_pop_head() {
-        std::unique_lock<std::mutex> head_lock( wait_for_data() );
-
-        if ( _bstop.load() ) {
+    std::unique_ptr<node> pop_head( bool &is_stop ) {
+        is_stop = bstop.load();
+        if ( is_stop ) {
             return nullptr;
         }
-
-        return pop_head();
-    }
-
-    std::unique_ptr<node> wait_pop_head( T &value ) {
-        std::unique_lock<std::mutex> head_lock( wait_for_data() );
-
-        if ( _bstop.load() ) {
-            return nullptr;
-        }
-
-        value = std::move( *head->data );
-        return pop_head();
-    }
-
-    std::unique_ptr<node> try_pop_head() {
-        std::lock_guard<std::mutex> head_lock( head_mutex );
-        if ( head.get() == get_tail() ) {
-            return std::unique_ptr<node>();
-        }
-        return pop_head();
-    }
-    std::unique_ptr<node> try_pop_head( T &value ) {
-        std::lock_guard<std::mutex> head_lock( head_mutex );
-        if ( head.get() == get_tail() ) {
-            return std::unique_ptr<node>();
-        }
-        value = std::move( *head->data );
         return pop_head();
     }
 
 public:
-    ThreadSafeQue()
-        : // ⇽-- - 1
-          head( new node ), tail( head.get() ), _bstop( false ) {}
+    ThreadSafeQue() : head( new node ), tail( head.get() ) {}
 
-    ThreadSafeQue( const ThreadSafeQue &other )            = delete;
-    ThreadSafeQue &operator=( const ThreadSafeQue &other ) = delete;
+    ThreadSafeQue( const ThreadSafeQue & )            = delete;
+    ThreadSafeQue &operator=( const ThreadSafeQue & ) = delete;
 
     void NotifyStop() {
-        _bstop.store( true );
+        bstop.store( true );
         data_cond.notify_one();
     }
 
-    std::shared_ptr<T> WaitAndPop() //  <------3
-    {
-        std::unique_ptr<node> const old_head = wait_pop_head();
-        if ( old_head == nullptr ) {
+    std::shared_ptr<T> WaitAndPop() {
+        std::unique_ptr<node> old_head = wait_pop_head();
+        if ( !old_head ) {
             return nullptr;
         }
         return old_head->data;
     }
 
-    void WaitAndPop( T &value ) //  <------4
-    {
-        std::unique_ptr<node> const old_head = wait_pop_head( value );
+    bool WaitAndPop( T &value ) {
+        std::unique_ptr<node> old_head = wait_pop_head( value );
+        return !!old_head;
     }
 
-    std::shared_ptr<T> Try() {
+    std::shared_ptr<T> TryPop() {
         std::unique_ptr<node> old_head = try_pop_head();
-        return old_head ? old_head->data : std::shared_ptr<T>();
+        return old_head ? old_head->data : nullptr;
     }
-    bool try_pop( T &value ) {
-        std::unique_ptr<node> const old_head = try_pop_head( value );
-        return old_head;
+
+    bool TryPop( T &value ) {
+        std::unique_ptr<node> old_head = try_pop_head( value );
+        return !!old_head;
     }
+
     bool empty() {
-        std::lock_guard<std::mutex> head_lock( head_mutex );
-        return ( head.get() == get_tail() );
+        std::lock_guard<std::mutex> lock( head_mutex );
+        return head.get() == get_tail();
     }
 
-    void push( T new_value ) //<------2
-    {
-        std::shared_ptr<T> new_data(
-            std::make_shared<T>( std::move( new_value ) ) );
-        std::unique_ptr<node> p( new node );
+    void push( T new_value ) {
+        auto new_data = std::make_shared<T>( std::move( new_value ) );
+        std::unique_ptr<node> new_node( new node );
         {
-            std::lock_guard<std::mutex> tail_lock( tail_mutex );
-            tail->data           = new_data;
-            node *const new_tail = p.get();
-            tail->next           = std::move( p );
-            tail                 = new_tail;
+            std::lock_guard<std::mutex> lock( tail_mutex );
+            new_node->data = new_data;
+            tail->next     = std::move( new_node );
+            tail           = tail->next.get();
         }
-
         data_cond.notify_one();
+    }
+
+private:
+    std::unique_ptr<node> wait_pop_head() {
+        std::unique_lock<std::mutex> lock( wait_for_data() );
+        return pop_head( bstop.load() );
+    }
+
+    std::unique_ptr<node> wait_pop_head( T &value ) {
+        std::unique_lock<std::mutex> lock( wait_for_data() );
+        std::unique_ptr<node> node = pop_head( bstop.load() );
+        if ( node ) {
+            value = std::move( *node->data );
+        }
+        return node;
+    }
+
+    std::unique_ptr<node> try_pop_head() {
+        std::lock_guard<std::mutex> lock( head_mutex );
+        return pop_head( bstop.load() );
+    }
+
+    std::unique_ptr<node> try_pop_head( T &value ) {
+        std::lock_guard<std::mutex> lock( head_mutex );
+        std::unique_ptr<node> node = pop_head( bstop.load() );
+        if ( node ) {
+            value = std::move( *node->data );
+        }
+        return node;
     }
 };
