@@ -4,6 +4,7 @@
 #include <memory>
 #include <queue>
 #include <iostream>
+#include <stdexcept>
 
 namespace visitor {
 
@@ -11,9 +12,6 @@ template <typename DataType> class BinaryTreeNode {
     using TreeType = BinaryTreeNode<DataType>;
 
 public:
-    // explicit BinaryTreeNode( const std::initializer_list<DataType> &list={}) {
-    //     for(const auto& elm : )
-    // }
     explicit BinaryTreeNode( const DataType &value )
         : value_( value ), left_( nullptr ), right_( nullptr ) {}
 
@@ -32,6 +30,8 @@ public:
     virtual void LayerOrderVisit( std::shared_ptr<TreeType> node ) = 0;
     virtual void insert(
         std::shared_ptr<TreeType> node, const DataType &value ) = 0;
+    virtual void insert( std::shared_ptr<TreeType> node,
+        const std::initializer_list<DataType> &list = {} )      = 0;
     virtual std::shared_ptr<TreeType> find(
         std::shared_ptr<TreeType> node, const DataType &value ) const = 0;
     virtual void remove(
@@ -81,7 +81,8 @@ public:
     }
     virtual void insert(
         std::shared_ptr<TreeType> node, const DataType &value ) override {
-
+        if ( node == nullptr )
+            throw std::invalid_argument( "Node cannot be null" );
         if ( value < node->value_ ) {
             if ( node->left_ == nullptr ) {
                 node->left_ = std::make_shared<TreeType>( value );
@@ -96,14 +97,29 @@ public:
             }
         }
     }
+
+    virtual void insert( std::shared_ptr<TreeType> node,
+        const std::initializer_list<DataType> &ilist = {} ) override {
+        if ( node == nullptr )
+            throw std::invalid_argument( "Node cannot be null" );
+
+        for ( const auto &elm : ilist ) {
+            insert( node, elm );
+        }
+    }
+
     template <typename... Args>
     void emplace( std::shared_ptr<TreeType> node, Args &&...args ) {
+        if ( node == nullptr )
+            throw std::invalid_argument( "Node cannot be null" );
         ( insert( node, args ), ... );
     }
 
     virtual std::shared_ptr<TreeType> find(
         std::shared_ptr<TreeType> node, const DataType &value ) const override {
 
+        if ( node == nullptr )
+            throw std::invalid_argument( "Node cannot be null" );
         if ( value == node->value_ ) {
             return node;
         } else if ( value < node->value_ ) {
@@ -115,6 +131,8 @@ public:
 
     virtual void remove(
         std::shared_ptr<TreeType> node, const DataType &value ) override {
+        if ( node == nullptr )
+            throw std::invalid_argument( "Node cannot be null" );
         removeHelper( nullptr, node, value );
     }
 
@@ -166,9 +184,10 @@ private:
 inline void test_func() {
     std::shared_ptr<BinaryTreeNode<int>> tree =
         std::make_shared<BinaryTreeNode<int>>( 15 );
-    // tree.insert(10, 20 , 30 , 40 , 50 , 60 , 70, 80);
     ExampleTreeVisitor<int> visitor;
-    visitor.emplace( tree, 10, 20, 8, 11, 16, 17, 6 );
+    visitor.emplace( tree, 10, 20, 30, 40, 50, 60, 70, 80 );
+    // visitor.emplace( tree, 10, 20, 8, 11, 16, 17, 6 );
+    visitor.insert( tree, { 10, 20, 8, 11, 16, 17, 6 } );
     visitor.LayerOrderVisit( tree );
     std::cout << std::endl;
     visitor.remove( tree, 10 );
